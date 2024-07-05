@@ -1,13 +1,23 @@
+
+
+
 //////////////////////////////// **** ALERT CONTAINER **** ////////////////////////////////
 
 function ensureAlertContainer() {
+    // document.getElementById('accountlogout').addEventListener('click', function() {
+    //     document.getElementById('accountForm').style.display = 'none';
+    //     document.getElementById('loginForm').style.display = 'block';
+    //     document.getElementById('mail').value = '';
+    //     document.getElementById('password').value = '';
+    //     document.getElementById('errorMessage').innerText = '';
+    // });
     var alertContainer = document.getElementById('alert-container');
     if (!alertContainer) {
         alertContainer = document.createElement('div');
         alertContainer.id = 'alert-container';
         alertContainer.style.position = 'fixed';
         alertContainer.style.top = '50%';
-        alertContainer.style.right = '10px'; // Default position: right
+        alertContainer.style.right = '10px';
         alertContainer.style.transform = 'translateY(-50%)';
         alertContainer.style.backgroundColor = '#FF0000';
         alertContainer.style.border = '1px solid #FF0000';
@@ -18,9 +28,8 @@ function ensureAlertContainer() {
         alertContainer.style.display = 'flex';
         alertContainer.style.flexDirection = 'column';
         alertContainer.style.alignItems = 'flex-start';
-        alertContainer.style.cursor = 'move'; // Add cursor style for dragging
+        alertContainer.style.cursor = 'move';
 
-        // Create and append logo
         var logo = document.createElement('img');
         logo.src = 'https://www.interpublic.com/wp-content/uploads/2019/04/Logo_UM-e1566481266432.png';
         logo.alt = 'Logo';
@@ -32,14 +41,14 @@ function ensureAlertContainer() {
 
         document.body.appendChild(alertContainer);
 
-        makeDraggable(alertContainer); // Make the alert container draggable
+        makeDraggable(alertContainer);
     }
     return alertContainer;
 }
 
 function removeAlertContainerIfEmpty() {
     var alertContainer = document.getElementById('alert-container');
-    if (alertContainer && alertContainer.childElementCount <= 1) { // Adjust to 1 because of the logo
+    if (alertContainer && alertContainer.childElementCount <= 1) {
         alertContainer.remove();
     }
 }
@@ -50,16 +59,22 @@ function addAlert(id, message) {
     if (!alert) {
         alert = document.createElement('p');
         alert.id = id;
-        alert.innerHTML = message; // innerHTML is used to add HTML content
-        alert.style.margin = '0 0 10px 0'; // Space between alerts
-        alert.style.padding = '10px'; // Padding for alerts
-        alert.style.backgroundColor = '#f8f9fa'; // Light background for alerts
-        alert.style.border = '1px solid #ff0000'; // Red border for alerts
-        alert.style.borderRadius = '5px'; // Rounded corners for alerts
-        alert.style.fontSize = '14px'; // Ensure font size consistency
-        alertContainer.appendChild(alert);
+        alert.innerHTML = message;
+        alert.style.margin = '0 0 10px 0';
+        alert.style.padding = '10px';
+        alert.style.backgroundColor = '#f8f9fa';
+        alert.style.border = '1px solid #ff0000';
+        alert.style.borderRadius = '5px';
+        alert.style.fontSize = '14px';
+
+        if (id.startsWith('alertuser')) {
+            alertContainer.insertBefore(alert, alertContainer.firstChild.nextSibling);
+        } else {
+            alertContainer.appendChild(alert);
+        }
     }
 }
+
 
 function removeAlert(id) {
     var alert = document.getElementById(id);
@@ -105,14 +120,181 @@ function makeDraggable(element) {
     }
 }
 
-// FACEBOOK HANDLERS
+
+
+////////////////////////////////////// **** POPUP JS **** //////////////////////////////////////
+
+
+
+document.addEventListener('DOMContentLoaded', function () {
+    let accounts = [];
+    let isLoggedIn = false;
+
+    const input = document.getElementById('accountInput');
+    const datalist = document.getElementById('accountsDatalist');
+    const loginForm = document.getElementById('loginForm');
+    const loginButton = document.getElementById('loginButton');
+    const accountForm = document.getElementById('accountForm');
+    const accountSubmitButton = document.getElementById('accountSubmitButton');
+    const errorMessage = document.getElementById('errorMessage');
+
+    function updateDatalist() {
+        datalist.innerHTML = '';
+        accounts.forEach(account => {
+            const option = document.createElement('option');
+            option.value = account;
+            datalist.appendChild(option);
+        });
+    }
+
+    function loadStorageData() {
+        chrome.storage.local.get(['accounts', 'isLoggedIn'], function (data) {
+            if (data.isLoggedIn) {
+                isLoggedIn = data.isLoggedIn;
+                accounts = data.accounts || [];
+                updateDatalist();
+                loginForm.style.display = 'none';
+                accountForm.style.display = 'block';
+            }
+        });
+    }
+
+    input.addEventListener('input', function () {
+        const value = this.value.toLowerCase();
+        const suggestions = accounts.filter(account => account.toLowerCase().startsWith(value));
+        datalist.innerHTML = '';
+        suggestions.forEach(account => {
+            const option = document.createElement('option');
+            option.value = account;
+            datalist.appendChild(option);
+        });
+    });
+
+    loginForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        loginButton.classList.add('loading');
+        errorMessage.textContent = '';
+
+        const mail = document.getElementById('mail').value;
+        const password = document.getElementById('password').value;
+
+        fetch("https://act-api.vercel.app/user", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ mail: mail, password: password })
+        })
+            .then(response => {
+                if (!response.ok) {
+                    // throw new Error('Network response was not ok');
+                }
+                return response.json();
+            })
+            .then(data => {
+                loginButton.classList.remove('loading');
+                if (data.hata) {
+                    errorMessage.textContent = data.hata;
+                    errorMessage.style.color = 'red';
+                } else {
+                    isLoggedIn = true;
+                    chrome.storage.local.set({ isLoggedIn: true }, function () {
+                        console.log('Login status saved to chrome storage.');
+                    });
+                    loginForm.style.display = 'none';
+                    accountForm.style.display = 'block';
+                    accounts = data.user && data.user.account ? data.user.account.map(acc => acc.name) : [];
+                    chrome.storage.local.set({ accounts: accounts }, function () {
+                        console.log('Accounts data saved to chrome storage.');
+                    });
+                    updateDatalist();
+                }
+            })
+            .catch(error => {
+                console.error('Fetch error:', error);
+                errorMessage.textContent = "There was an error processing your request: " + error.message;
+                errorMessage.style.color = 'red';
+                loginButton.classList.remove('loading');
+            });
+    });
+
+    accountSubmitButton.addEventListener('click', function (event) {
+        event.preventDefault();
+        const accountName = input.value;
+
+        fetch("https://act-api.vercel.app/findAccountRules", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ accountName: accountName })
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.rules) {
+                    // const myArrayString = JSON.stringify(data.rules);
+
+                    console.log('Rules:', data.rules);
+                    chrome.storage.local.set({ rules: data.rules }, function () {
+                        console.log('Rules data saved to chrome storage.');
+                        checkBudgetLimit();  // Now check the budget limit after updating the rules.
+                    });
+                } else {
+                    console.error('No rules found for this account');
+                }
+            })
+            .catch(error => {
+                console.error('Fetch error when submitting account:', error);
+                errorMessage.textContent = "There was an error processing your request: " + error.message;
+                errorMessage.style.color = 'red';
+            });
+    });
+
+    function checkBudgetLimit() {
+        chrome.storage.local.get('rules', function (data) {
+            if (data.rules) {
+                const budgetRule = data.rules.find(r => r.ruleDescription === "Budget");
+                if (budgetRule) {
+                    var inputs = document.querySelectorAll('input[placeholder="Please enter an amount"]');
+                    inputs.forEach(function (input) {
+                        var value = parseFloat(input.value.replace('TL', '').replace(',', ''));
+                        if (!isNaN(value) && value > budgetRule.rule) {
+                            addAlert('alert5', 'Bütçe aşıldı.');
+                        } else {
+                            removeAlert('alert5');
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    loadStorageData(); // Load data on page load
+});
+
+
+
+let budgetCampaign = false;
+let budgetAdSet = false;
+
+////////////////////////////////////// FACEBOOK HANDLERS //////////////////////////////////////
 
 var callback = function (mutationsList, observer) {
 
     for (var mutation of mutationsList) {
 
+        // var dollarInputs = document.querySelectorAll('input[value^="TL"]');
+        // dollarInputs.forEach(function (input) {
+        //     var value = parseFloat(input.value.replace('TL', ''));
+        //     console.log(value)
+        //     if (!isNaN(value) && value >31) {
+        //         addAlert('alert6', 'Ad set bütçesi fazla!');
+        //     }
+        //     else {
+        //         removeAlert('alert6');
+        //     }
+        // });
 
-        // Listen for campaign name and ad set name inputs
         let inputElement1 = document.querySelector('input[placeholder="Enter your campaign name here..."]');
         if (inputElement1) {
             inputElement1.addEventListener('input', function () {
@@ -134,126 +316,162 @@ var callback = function (mutationsList, observer) {
                 }
             });
         }
+        chrome.storage.local.get('rules', function (data) {
+            if (data.rules) {
 
+                // var budgetInputs = document.querySelectorAll('input[value^="TL"]');
+                const budgetRule = data.rules.find(r => r.ruleDescription === "Budget");
+                if (budgetRule) {
 
-        fetch("https://act-api.vercel.app/findamember")
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
-            .then(data => {
-                data.forEach(element => {
-
-                    if (element.ruleDescription === "Budget") {
-                        var inputs = document.querySelectorAll('input[placeholder="Please enter an amount"]');
+                    var inputs = document.querySelectorAll('input[placeholder="Please enter an amount"]');
+                    budgetCampaign = true;
+                    if (inputs.length > 0) {
+                        budgetCampaign = true;
                         inputs.forEach(function (input) {
                             var value = parseFloat(input.value.replace('TL', '').replace(',', ''));
-                            if (!isNaN(value) && value > element.rule) {
+                            if (!isNaN(value) && value > budgetRule.rule) {
                                 addAlert('alert5', 'Bütçe aşıldı.');
-                            }
-                            else {
+                            } else {
                                 removeAlert('alert5');
                             }
                         });
                     }
-                    else if (element.ruleDescription === "A/B Testing") {
-                        var element2 = document.querySelector('[aria-label="Create A/B test"]');
-
-                        if (element.rule === "True") {
-                            if (element2.getAttribute('aria-checked') === 'false') {
-                                addAlert('alert1', 'A/B test kuralı hatalı.');
-                            } else {
-                                removeAlert('alert1');
-                            }
-                        }
-                        else {
-                            if (element2.getAttribute('aria-checked') === 'true') {
-                                addAlert('alert1', 'A/B test kuralı hatalı.');
-                            } else {
-                                removeAlert('alert1');
-                            }
-                        }
+                    else {
+                        budgetCampaign = false;
+                        removeAlert('alert5');
                     }
-                    else if (element.ruleDescription === "Budget Type") {
-                        if (element.rule === "Lifetime Budget") {
-                            var spans = document.querySelectorAll('span');
-
-                            var foundDailyBudget = false;
-                            spans.forEach(function (span) {
-                                var expectedStyle = 'font-family: Roboto, Arial, sans-serif; font-size: 0.875rem; line-height: 1.42857; letter-spacing: normal; overflow-wrap: normal; text-align: left; color: rgba(0, 0, 0, 0.85);';
-
-                                if (span.getAttribute('style') === expectedStyle) { // Check style and regex
-                                    if (span.textContent.includes('Daily budget')) {
-                                        foundDailyBudget = true;
-                                        addAlert('alert4', 'Budget Time Lifetime Olmalı.');
-                                    }
-
-                                }
-
-                            });
-                            if (!foundDailyBudget) {
-                                removeAlert('alert4');
-                            }
-                        }
-                        else {
-                            var spans = document.querySelectorAll('span');
-                            var foundDailyBudget = false;
-                            spans.forEach(function (span) {
-                                var expectedStyle = 'font-family: Roboto, Arial, sans-serif; font-size: 0.875rem; line-height: 1.42857; letter-spacing: normal; overflow-wrap: normal; text-align: left; color: rgba(0, 0, 0, 0.85);';
-
-                                if (span.getAttribute('style') === expectedStyle) { // Check style and regex
-                                    if (span.textContent.includes('Lifetime budget')) {
-                                        foundDailyBudget = true;
-                                        addAlert('alert4', 'Budget Time Daily Olmalı.');
-                                    }
-                                }
-                            });
-                            if (!foundDailyBudget) {
-                                removeAlert('alert4');
-                            }
-                        }
-                    }
-                });
 
 
-            })
-            .catch(error => {
-                console.error('There was a problem with your fetch operation:', error);
-            });
 
-
-        fetch("https://act-api.vercel.app/findamember")
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Network response was not ok');
                 }
-                return response.json();
-            })
-            .then(data => {
-                data.forEach(element => {
+                const budgetRuleAdSetBudget = data.rules.find(r => r.ruleDescription === "Ad Set Budget");
+                if (budgetRuleAdSetBudget) {
+                    if (budgetCampaign === false) {
 
 
-                    if (element.ruleDescription === "Ad Set Budget") {
                         var dollarInputs = document.querySelectorAll('input[value^="TL"]');
                         var exceededValue = false;
-                        dollarInputs.forEach(function (input) {
-                            var value = parseFloat(input.value.replace('TL', '').replace(',', ''));
-                            if (!isNaN(value) && value > element.rule) {
-                                exceededValue = true;
-                                addAlert('alert6', 'Ad set bütçesi fazla!');
+                        if (dollarInputs.length > 0) {
+                            budgetAdSet = true;
+                            dollarInputs.forEach(function (input) {
+                                var value = parseFloat(input.value.replace('TL', '').replace(',', ''));
+                                if (!isNaN(value) && value > budgetRuleAdSetBudget.rule) {
+                                    exceededValue = true;
+                                    addAlert('alert6', 'Ad set bütçesi fazla!');
+                                }
+                                else {
+                                    removeAlert('alert6');
+                                }
+                            });
+                        }
+                        else {
+                            budgetAdSet = false;
+
+                        }
+                    }
+                    else {
+                        removeAlert('alert6');
+                    }
+
+
+
+
+                }
+                const budgetRuleAB = data.rules.find(r => r.ruleDescription === "A/B Testing");
+                if (budgetRuleAB) {
+                    var element2 = document.querySelector('[aria-label="Create A/B test"]');
+
+                    if (budgetRuleAB.rule === "True") {
+                        if (element2.getAttribute('aria-checked') === 'false') {
+                            addAlert('alert1', 'A/B test kuralı hatalı.');
+                        } else {
+                            removeAlert('alert1');
+                        }
+                    }
+                    else {
+                        if (element2.getAttribute('aria-checked') === 'true') {
+                            addAlert('alert1', 'A/B test kuralı hatalı.');
+                        } else {
+                            removeAlert('alert1');
+                        }
+                    }
+                }
+                const budgetRuleType = data.rules.find(r => r.ruleDescription === "Budget Type");
+                if (budgetRuleType) {
+                    if (budgetRuleType.rule === "Lifetime Budget") {
+                        var spans = document.querySelectorAll('span');
+
+                        var foundDailyBudget = false;
+                        spans.forEach(function (span) {
+                            var expectedStyle = 'font-family: Roboto, Arial, sans-serif; font-size: 0.875rem; line-height: 1.42857; letter-spacing: normal; overflow-wrap: normal; text-align: left; color: rgba(0, 0, 0, 0.85);';
+
+                            if (span.getAttribute('style') === expectedStyle) {
+                                if (span.textContent.includes('Daily budget')) {
+                                    foundDailyBudget = true;
+                                    addAlert('alert4', 'Budget Time Lifetime Olmalı.');
+                                }
+
                             }
-                            else {
-                                removeAlert('alert6');
+
+                        });
+                        if (!foundDailyBudget) {
+                            removeAlert('alert4');
+                        }
+                    }
+                    else {
+                        var spans = document.querySelectorAll('span');
+                        var foundDailyBudget = false;
+                        spans.forEach(function (span) {
+                            var expectedStyle = 'font-family: Roboto, Arial, sans-serif; font-size: 0.875rem; line-height: 1.42857; letter-spacing: normal; overflow-wrap: normal; text-align: left; color: rgba(0, 0, 0, 0.85);';
+
+                            if (span.getAttribute('style') === expectedStyle) {
+                                if (span.textContent.includes('Lifetime budget')) {
+                                    foundDailyBudget = true;
+                                    addAlert('alert4', 'Budget Time Daily Olmalı.');
+                                }
                             }
                         });
+                        if (!foundDailyBudget) {
+                            removeAlert('alert4');
+                        }
                     }
-                });
-            })
-            .catch(error => {
-                console.error('There was a problem with your fetch operation:', error);
-            });
+                }
+                const Taxonomy = data.rules.find(r => r.ruleDescription === "Taxonomy");
+                if (Taxonomy) {
+                    if (Taxonomy.rule === "BrandName|Platform|CampaignName|Objective|StartDate|EndDate") {
+                        let inputElement1 = document.querySelector('input[placeholder="Enter your campaign name here..."]');
+
+                        const regex = /^[A-Za-z0-9]+(?:\|[A-Za-z0-9]+){3}\|\d{4}-\d{2}-\d{2}\|\d{4}-\d{2}-\d{2}$/;
+                        if (!regex.test(inputElement1.value.toLowerCase())) {
+                            addAlert("alert15", "Taxonomy Hatalı")
+                        }
+                        else {
+                            removeAlert("alert15")
+                        }
+                    }
+                    if (Taxonomy.rule === "BrandName_Platform_CampaignName_Objective_StartDate_EndDate") {
+                        let inputElement1 = document.querySelector('input[placeholder="Enter your campaign name here..."]');
+                        const regex = /^[A-Za-z0-9]+_[A-Za-z0-9]+_[A-Za-z0-9]+_[A-Za-z0-9]+_\d{4}-\d{2}-\d{2}_\d{4}-\d{2}-\d{2}$/;
+                        if (!regex.test(inputElement1.value.toLowerCase())) {
+                            addAlert("alert15", "Taxonomy Hatalı")
+                        }
+                        else {
+                            removeAlert("alert15")
+                        }
+                    }
+                    if (Taxonomy.rule === "BrandName-Platform-CampaignName-Objective-StartDate-EndDate") {
+                        let inputElement1 = document.querySelector('input[placeholder="Enter your campaign name here..."]');
+                        const regex = /^[A-Za-z0-9]+(?:-[A-Za-z0-9]+){3}-\d{4}-\d{2}-\d{2}-\d{4}-\d{2}-\d{2}$/;
+                        if (!regex.test(inputElement1.value.toLowerCase())) {
+                            addAlert("alert15", "Taxonomy Hatalı")
+                        }
+                        else {
+                            removeAlert("alert15")
+                        }
+                    }
+                }
+            }
+        });
 
 
 
@@ -264,180 +482,128 @@ var callback = function (mutationsList, observer) {
             var spanText = span.textContent;
             var expectedStyle = 'font-family: Roboto, Arial, sans-serif; font-size: 0.875rem; line-height: 1.42857; letter-spacing: normal; overflow-wrap: normal; text-align: left; color: rgba(0, 0, 0, 0.85);';
 
-            if (span.getAttribute('style') === expectedStyle && /\(\d+\)/.test(spanText)) { // Check style and regex
+            if (span.getAttribute('style') === expectedStyle && /\(\d+\)/.test(spanText)) {
                 addAlert('alert-span-' + index, spanText + '<br>olarak giriş yapıldı');
             } else {
                 removeAlert('alert-span-' + index);
             }
         });
-
-        checkLabelsForCurrency(); // Call to check for specific label content
-        checkBoldTextInParagraphs(); // Call this function to check for bold text in paragraphs
-        checkDivContent(); // Call to check for specific div content
-        checkCampaignLifetimeBudgetLabel(); // Call to check the label
-        checkSpanForPredictionText(); // Call this function to check for prediction text in spans
-        checkDaysInParagraphs(); // Call this function to check the days in paragraphs
     }
 };
 
-// GOOGLE HANDLERS
+////////////////////////////////////// GOOGLE HANDLERS //////////////////////////////////////
 
-function handleBudgetInputChange(event) {
-    const value = parseFloat(event.target.value);
-    if (!isNaN(value) && value > 100) {
-        addAlert('alert7', 'Bütçe tutarı 100₺ üzerinde.');
-    } else {
-        removeAlert('alert7');
-    }
-}
 
-function handleCampaignInputChange(event) {
-    const value = event.target.value.toLowerCase();
-    if (value === 'dyson') {
-        addAlert('alert8', 'Kampanya adı "Dyson" olarak girildi.');
-    } else {
-        removeAlert('alert8');
-    }
-}
+function setupHandlers() {
+    chrome.storage.local.get('rules', function (data) {
+        if (data && data.rules) {
+            const rules = {};
+            data.rules.forEach(rule => {
+                rules[rule.ruleDescription] = rule.rule;
+            });
 
-function handleTargetCPMBidInputChange(event) {
-    const value = parseFloat(event.target.value);
-    if (!isNaN(value) && value > 100) {
-        addAlert('alert9', 'Hedef GBM teklifi 100₺ üzerinde.');
-    } else {
-        removeAlert('alert9');
-    }
-}
+            const observer = new MutationObserver(() => {
+                attachInputHandlers(rules);
+            });
 
-function handleKeywordTextareaChange(event) {
-    const value = event.target.value.toLowerCase();
-    if (value.includes('entertainment')) {
-        addAlert('alert10', 'Anahtar kelimeler arasında "entertainment" bulundu.');
-    } else {
-        removeAlert('alert10');
-    }
-}
+            observer.observe(document.body, {
+                attributes: true,
+                childList: true,
+                subtree: true,
+            });
 
-function handleAdGroupName(event) {
-    const value = event.target.value.toLowerCase();
-    if (value === 'dyson') {
-        addAlert('alert11', 'Reklam Grubu Adı Dyson olarak girildi.');
-    } else {
-        removeAlert('alert11');
-    }
-}
-
-let divContentChecked = false;
-function checkDivContent() {
-    if (!divContentChecked) {
-        const targetDiv = document.querySelector('div[debugid="title"]');
-        if (targetDiv && targetDiv.textContent.includes('Sanat ve Eğlence')) {
-            addAlert('alert12', 'Sanat ve Eğlence içeriği bulundu.');
-        } else {
-            removeAlert('alert12');
+            attachInputHandlers(rules);
         }
-        divContentChecked = true;
-    }
+    });
 }
 
-function checkShoppingCartItems() {
-    var shoppingCartItems = document.querySelectorAll('shopping-cart-item');
-    var hasArtAndEntertainment = false;
-    shoppingCartItems.forEach(function (item) {
-        var divs = item.querySelectorAll('div');
-        Array.from(divs).some(function (div) {
-            if (div.textContent.includes("Sanat ve Eğlence")) {
-                hasArtAndEntertainment = true;
-                return true; // Break the loop
-            }
-        });
+function attachInputHandlers(rules) {
+    const adcamInput = document.querySelector('input[aria-label="Reklam grubu adı"]');
+    if (adcamInput && !adcamInput.dataset.listenerAdded) {
+        adcamInput.addEventListener("input", event => handleAdGroupName(event, rules['Campaign Name']));
+        adcamInput.dataset.listenerAdded = "true";
+    }
+
+    const budgetInput = document.querySelector('input[aria-label="Bütçe tutarı (₺ cinsinden)"]');
+    if (budgetInput && !budgetInput.dataset.listenerAdded) {
+        budgetInput.addEventListener("input", event => handleBudgetInputChange(event, parseFloat(rules['Budget'])));
+        budgetInput.dataset.listenerAdded = "true";
+    }
+
+    const campaignInput = document.querySelector('input[aria-label="Kampanya adı"]');
+    if (campaignInput && !campaignInput.dataset.listenerAdded) {
+        campaignInput.addEventListener("input", event => handleCampaignInputChange(event, rules['Campaign Name']));
+        campaignInput.dataset.listenerAdded = "true";
+    }
+
+    const targetCPMBidInput = document.querySelector('input[aria-label="Hedef GBM teklifi (₺ cinsinden)"]');
+    if (targetCPMBidInput && !targetCPMBidInput.dataset.listenerAdded) {
+        targetCPMBidInput.addEventListener("input", event => handleTargetCPMBidInputChange(event, parseFloat(rules['Target GBM budget'])));
+        targetCPMBidInput.dataset.listenerAdded = "true";
+    }
+
+    const keywordTextarea = document.querySelectorAll('textarea[aria-label*="Anahtar kelimeler"]');
+    keywordTextarea.forEach(textarea => {
+        if (!textarea.dataset.listenerAdded) {
+            textarea.addEventListener("input", event => handleKeywordTextareaChange(event, rules['Keywords']));
+            textarea.dataset.listenerAdded = "true";
+        }
     });
 
-    if (hasArtAndEntertainment) {
-        addAlert('alert-shopping-cart', 'Sanat ve Eğlence içeriği bulundu.');
+    const avgDailyBudgetInput = document.querySelector('input[aria-label="Bu kampanya için ortalama günlük bütçenizi belirleyin"]');
+    if (avgDailyBudgetInput && !avgDailyBudgetInput.dataset.listenerAdded) {
+        avgDailyBudgetInput.addEventListener("input", event => handleBudgetInputChange(event, parseFloat(rules['Budget'])));
+        avgDailyBudgetInput.dataset.listenerAdded = "true";
+    }
+
+    checkDivContent(rules);
+    checkShoppingCartItems(rules);
+}
+
+function handleBudgetInputChange(event, Budget) {
+    const value = parseFloat(event.target.value);
+    if (!isNaN(value) && value > Budget) {
+        addAlert("alert7", `Bütçe tutarı ${Budget}₺ üzerinde.`);
     } else {
-        removeAlert('alert-shopping-cart');
+        removeAlert("alert7");
     }
 }
 
-function observeDOMChanges() {
-    const observer = new MutationObserver(() => {
-        const adcamInput = document.querySelector('input[aria-label="Reklam grubu adı"]');
-        if (adcamInput && !adcamInput.dataset.listenerAdded) {
-            adcamInput.addEventListener('input', handleAdGroupName);
-            adcamInput.dataset.listenerAdded = 'true';
-        }
-
-        const budgetInput = document.querySelector('input[aria-label="Bütçe tutarı (₺ cinsinden)"]');
-        if (budgetInput && !budgetInput.dataset.listenerAdded) {
-            budgetInput.addEventListener('input', handleBudgetInputChange);
-            budgetInput.dataset.listenerAdded = 'true';
-        }
-
-        const campaignInput = document.querySelector('input[aria-label="Kampanya adı"]');
-        if (campaignInput && !campaignInput.dataset.listenerAdded) {
-            campaignInput.addEventListener('input', handleCampaignInputChange);
-            campaignInput.dataset.listenerAdded = 'true';
-        }
-
-        const targetCPMBidInput = document.querySelector('input[aria-label="Hedef GBM teklifi (₺ cinsinden)"]');
-        if (targetCPMBidInput && !targetCPMBidInput.dataset.listenerAdded) {
-            targetCPMBidInput.addEventListener('input', handleTargetCPMBidInputChange);
-            targetCPMBidInput.dataset.listenerAdded = 'true';
-        }
-
-        const keywordTextarea1 = document.querySelector('textarea[aria-label="Anahtar kelimeleri girin veya yapıştırın. Anahtar kelimeleri birbirinden virgülle ayırabilir veya her satıra bir anahtar kelime girebilirsiniz."]');
-        if (keywordTextarea1 && !keywordTextarea1.dataset.listenerAdded) {
-            keywordTextarea1.addEventListener('input', handleKeywordTextareaChange);
-            keywordTextarea1.dataset.listenerAdded = 'true';
-        }
-
-        const keywordTextarea2 = document.querySelector('textarea[aria-label="Kelimeye veya kelime öbeğine göre arama yapın"]');
-        if (keywordTextarea2 && !keywordTextarea2.dataset.listenerAdded) {
-            keywordTextarea2.addEventListener('input', handleKeywordTextareaChange);
-            keywordTextarea2.dataset.listenerAdded = 'true';
-        }
-
-        // Check for the specific budget input and add event listener
-        const avgDailyBudgetInput = document.querySelector('input[aria-label="Bu kampanya için ortalama günlük bütçenizi belirleyin"]');
-        if (avgDailyBudgetInput && !avgDailyBudgetInput.dataset.listenerAdded) {
-            avgDailyBudgetInput.addEventListener('input', function (event) {
-                const value = parseFloat(event.target.value);
-                if (!isNaN(value) && value > 100) {
-                    addAlert('alert13', 'Ortalama günlük bütçe aşıldı.');
-                } else {
-                    removeAlert('alert13');
-                }
-            });
-            avgDailyBudgetInput.dataset.listenerAdded = 'true';
-        }
-
-
-        const EBMBudgetInput = document.querySelector('input[aria-label="Hedef EBM"]');
-        if (EBMBudgetInput && !EBMBudgetInput.dataset.listenerAdded) {
-            EBMBudgetInput.addEventListener('input', function (event) {
-                const value = parseFloat(event.target.value);
-                if (!isNaN(value) && value > 100) {
-                    addAlert('alert14', 'Hedef EBM bütçesi aşıldı.');
-                } else {
-                    removeAlert('alert13');
-                }
-            });
-            EBMBudgetInput.dataset.listenerAdded = 'true';
-        }
-
-
-
-        checkDivContent();
-        checkShoppingCartItems();
-    });
-
-    observer.observe(document.body, { attributes: true, childList: true, subtree: true });
+function handleCampaignInputChange(event, expectedName) {
+    const value = event.target.value.toLowerCase();
+    if (value === expectedName.toLowerCase()) {
+        addAlert("alert8", `Kampanya adı "${expectedName}" olarak girildi.`);
+    } else {
+        removeAlert("alert8");
+    }
 }
 
-observeDOMChanges();
+function handleTargetCPMBidInputChange(event, rule) {
+    const value = parseFloat(event.target.value);
+    if (!isNaN(value) && value > rule) {
+        addAlert("alert9", `Hedef GBM teklifi ${rule}₺ üzerinde.`);
+    } else {
+        removeAlert("alert9");
+    }
+}
 
-/////// LINKEDIN HANDLERS
+function handleKeywordTextareaChange(event, keyword) {
+    const value = event.target.value.toLowerCase();
+    if (value.includes(keyword.toLowerCase())) {
+        addAlert("alert10", `Anahtar kelimeler arasında "${keyword}" bulundu.`);
+    } else {
+        removeAlert("alert10");
+    }
+}
+
+function checkDivContent(rules) {
+}
+function checkShoppingCartItems(rules) {
+}
+setupHandlers();
+
+
+////////////////////////////////////// LINKEDIN HANDLERS //////////////////////////////////////
 
 function checkCampaignLifetimeBudgetLabel() {
     var labels = document.querySelectorAll('label[for="campaign-lifetime-budget"]');
@@ -453,7 +619,7 @@ function checkCampaignLifetimeBudgetLabel() {
 function checkCampaignLifetimeBudgetInput() {
     var input = document.querySelector('input[id="campaign-lifetime-budget"]');
     if (input) {
-        var value = parseFloat(input.value.replace(/[^0-9.,]/g, "").replace(",", ".")); // Ondalık ayıracı virgülle değiştir
+        var value = parseFloat(input.value.replace(/[^0-9.,]/g, "").replace(",", "."));
         if (!isNaN(value) && value > 100) {
             addAlert('alert14', 'Bütçe aşıldı: ' + value);
         } else {
@@ -462,28 +628,22 @@ function checkCampaignLifetimeBudgetInput() {
     }
 }
 
-
-
-// Observe LinkedIn specific changes
 function observeLinkedInDOMChanges() {
     const observer = new MutationObserver(() => {
-        checkCampaignLifetimeBudgetLabel(); // Call this function to check the label
-        checkCampaignLifetimeBudgetInput(); // Call this function to check the input
+        checkCampaignLifetimeBudgetLabel();
+        checkCampaignLifetimeBudgetInput();
     });
 
     observer.observe(document.body, { attributes: true, childList: true, subtree: true });
 }
 
-observeLinkedInDOMChanges(); // Call this function to start observing LinkedIn specific changes
+observeLinkedInDOMChanges();
 
-////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-
-// General observer for other changes
 var targetNode = document.body;
 var config = { attributes: true, childList: true, subtree: true };
 
 var observer = new MutationObserver(callback);
 observer.observe(targetNode, config);
 
-observeDOMChanges(); // Call this function to start observing general changes
+observeDOMChanges();
 callback();
