@@ -1,16 +1,154 @@
 
+document.addEventListener('DOMContentLoaded', function () {
+    let accounts = [];
+    let isLoggedIn = false;
 
+    const input = document.getElementById('accountInput');
+    const datalist = document.getElementById('accountsDatalist');
+    const loginForm = document.getElementById('loginForm');
+    const loginButton = document.getElementById('loginButton');
+    const accountForm = document.getElementById('accountForm');
+    const accountSubmitButton = document.getElementById('accountSubmitButton');
+    const errorMessage = document.getElementById('errorMessage');
+
+    function updateDatalist() {
+        datalist.innerHTML = '';
+        accounts.forEach(account => {
+            const option = document.createElement('option');
+            option.value = account;
+            datalist.appendChild(option);
+        });
+    }
+
+    function loadStorageData() {
+        chrome.storage.local.get(['accounts', 'isLoggedIn'], function (data) {
+            if (data.isLoggedIn) {
+                isLoggedIn = data.isLoggedIn;
+                accounts = data.accounts || [];
+                updateDatalist();
+                loginForm.style.display = 'none';
+                accountForm.style.display = 'block';
+            }
+        });
+    }
+
+    input.addEventListener('input', function () {
+        const value = this.value.toLowerCase();
+        const suggestions = accounts.filter(account => account.toLowerCase().startsWith(value));
+        datalist.innerHTML = '';
+        suggestions.forEach(account => {
+            const option = document.createElement('option');
+            option.value = account;
+            datalist.appendChild(option);
+        });
+    });
+
+    loginForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        loginButton.classList.add('loading');
+        errorMessage.textContent = '';
+
+        const mail = document.getElementById('mail').value;
+        const password = document.getElementById('password').value;
+
+        fetch("https://act-api.vercel.app/user", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ mail: mail, password: password })
+        })
+            .then(response => response.json())
+            .then(data => {
+                loginButton.classList.remove('loading');
+                if (data.hata) {
+                    errorMessage.textContent = data.hata;
+                    errorMessage.style.color = 'red';
+                } else {
+                    isLoggedIn = true;
+                    chrome.storage.local.set({ isLoggedIn: true }, function () {
+                        console.log('Login status saved to chrome storage.');
+                    });
+                    loginForm.style.display = 'none';
+                    accountForm.style.display = 'block';
+                    accounts = data.user && data.user.account ? data.user.account.map(acc => acc.name) : [];
+                    chrome.storage.local.set({ accounts: accounts }, function () {
+                        console.log('Accounts data saved to chrome storage.');
+                    });
+                    updateDatalist();
+                }
+            })
+            .catch(error => {
+                console.error('Fetch error:', error);
+                errorMessage.textContent = "There was an error processing your request: " + error.message;
+                errorMessage.style.color = 'red';
+                loginButton.classList.remove('loading');
+            });
+    });
+
+    accountSubmitButton.addEventListener('click', function (event) {
+        event.preventDefault();
+        const accountName = input.value;
+
+        fetch("https://act-api.vercel.app/findAccountRules", {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ accountName: accountName })
+        })
+            .then(response => response.json())
+            .then(data => {
+                if (data.rules) {
+                    console.log('Rules:', data.rules);
+                    chrome.storage.local.set({ rules: data.rules }, function () {
+                        console.log('Rules data saved to chrome storage.');
+                        checkBudgetLimit();  // Now check the budget limit after updating the rules.
+                    });
+                } else {
+                    console.error('No rules found for this account');
+                }
+            })
+            .catch(error => {
+                console.error('Fetch error when submitting account:', error);
+                errorMessage.textContent = "There was an error processing your request: " + error.message;
+                errorMessage.style.color = 'red';
+            });
+    });
+
+    function checkBudgetLimit() {
+        chrome.storage.local.get('rules', function (data) {
+            if (data.rules) {
+                const budgetRule = data.rules.find(r => r.ruleDescription === "Budget");
+                if (budgetRule) {
+                    var inputs = document.querySelectorAll('input[placeholder="Please enter an amount"]');
+                    inputs.forEach(function (input) {
+                        var value = parseFloat(input.value.replace('TL', '').replace(',', ''));
+                        if (!isNaN(value) && value > budgetRule.rule) {
+                            addAlert('alert5', 'Bütçe aşıldı.');
+                        } else {
+                            removeAlert('alert5');
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    document.getElementById('accountlogout').addEventListener('click', function () {
+        document.getElementById('accountForm').style.display = 'none';
+        document.getElementById('loginForm').style.display = 'block';
+        document.getElementById('mail').value = '';
+        document.getElementById('password').value = '';
+        document.getElementById('errorMessage').innerText = '';
+    });
+
+    loadStorageData(); // Load data on page load
+});
 
 //////////////////////////////// **** ALERT CONTAINER **** ////////////////////////////////
 
 function ensureAlertContainer() {
-    // document.getElementById('accountlogout').addEventListener('click', function() {
-    //     document.getElementById('accountForm').style.display = 'none';
-    //     document.getElementById('loginForm').style.display = 'block';
-    //     document.getElementById('mail').value = '';
-    //     document.getElementById('password').value = '';
-    //     document.getElementById('errorMessage').innerText = '';
-    // });
     var alertContainer = document.getElementById('alert-container');
     if (!alertContainer) {
         alertContainer = document.createElement('div');
@@ -124,8 +262,6 @@ function makeDraggable(element) {
 
 ////////////////////////////////////// **** POPUP JS **** //////////////////////////////////////
 
-
-
 document.addEventListener('DOMContentLoaded', function () {
     let accounts = [];
     let isLoggedIn = false;
@@ -185,12 +321,7 @@ document.addEventListener('DOMContentLoaded', function () {
             },
             body: JSON.stringify({ mail: mail, password: password })
         })
-            .then(response => {
-                if (!response.ok) {
-                    // throw new Error('Network response was not ok');
-                }
-                return response.json();
-            })
+            .then(response => response.json())
             .then(data => {
                 loginButton.classList.remove('loading');
                 if (data.hata) {
@@ -232,13 +363,12 @@ document.addEventListener('DOMContentLoaded', function () {
             .then(response => response.json())
             .then(data => {
                 if (data.rules) {
-                    // const myArrayString = JSON.stringify(data.rules);
-
                     console.log('Rules:', data.rules);
                     chrome.storage.local.set({ rules: data.rules }, function () {
                         console.log('Rules data saved to chrome storage.');
                         checkBudgetLimit();  // Now check the budget limit after updating the rules.
                     });
+                    showAccountSubmittedMessage();
                 } else {
                     console.error('No rules found for this account');
                 }
@@ -249,6 +379,18 @@ document.addEventListener('DOMContentLoaded', function () {
                 errorMessage.style.color = 'red';
             });
     });
+
+    function showAccountSubmittedMessage() {
+        const messageElement = document.createElement('div');
+        messageElement.innerText = 'Account Submitted!';
+        messageElement.style.color = 'green';
+        messageElement.style.marginTop = '10px';
+        accountForm.insertAdjacentElement('afterend', messageElement);
+        setTimeout(() => {
+            messageElement.remove();
+        }, 3000);
+    }
+
 
     function checkBudgetLimit() {
         chrome.storage.local.get('rules', function (data) {
@@ -269,13 +411,17 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     }
 
+    document.getElementById('accountlogout').addEventListener('click', function () {
+        document.getElementById('accountForm').style.display = 'none';
+        document.getElementById('loginForm').style.display = 'block';
+        document.getElementById('mail').value = '';
+        document.getElementById('password').value = '';
+        document.getElementById('errorMessage').innerText = '';
+    });
+
     loadStorageData(); // Load data on page load
 });
 
-
-
-let budgetCampaign = false;
-let budgetAdSet = false;
 
 ////////////////////////////////////// FACEBOOK HANDLERS //////////////////////////////////////
 
